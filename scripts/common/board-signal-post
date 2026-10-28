@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""Write this host's BOARD_SIGNAL atomically, then send a webhook hint."""
+
+import argparse
+from datetime import datetime, timezone
+import errno
+import hashlib
+import http.client
+import json
+import os
+from pathlib import Path
+import socket
+import ssl
+import stat
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+
+
+FIELDS = (
+    "board", "board_row", "task_id", "title", "goal", "status", "question",
+    "host", "pr", "event", "as_of", "seq", "summary", "evidence", "writer",
+)
+
+
+class CredentialError(ValueError):
+    pass
+
+
+class SignalWriteError(OSError):
+    pass
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def report_delivery_error(error):
+    status = error.code if isinstance(error, urllib.error.HTTPError) else None
+    if type(status) is not int or not 100 <= status <= 599:
+        status = None
+    # Exception text can contain credentials, URLs or response bodies; use trusted descriptions.
+    reason = http.client.responses.get(status, "HTTP request failed" if status else "transport error (details redacted)")
+    cause = error.reason if isinstance(error, urllib.error.URLError) else error
+    if status is None:
+        if isinstance(cause, TimeoutError) or (isinstance(cause, str) and cause == "timed out"):
+            reason = "timed out"
+        elif isinstance(cause, socket.gaierror):
+            reason = "name resolution failed"
+        elif isinstance(cause, ssl.SSLCertVerificationError):
+            reason = "certificate verification failed"
+        elif isinstance(cause, ssl.SSLError):
+            reason = "TLS error"
+        elif isinstance(cause, OSError) and cause.errno in errno.errorcode:
+            reason = os.strerror(cause.errno)
+        elif isinstance(cause, http.client.HTTPException):
+            reason = "invalid HTTP response"
+    print("error: signal written; delivery pending; retry same input at most once; "
+          f"exc_type={type(error).__name__} http_status={status or '-'} reason={reason}",
+          file=sys.stderr)
+
+
+def credential(name):
+    path = Path.home() / ".config/board-wake" / name
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, encoding="utf-8") as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_uid != os.getuid()):
+            raise ValueError("credential files must be owned by this user with mode 0600")
+        value = stream.read().strip()
+    if not value or "\r" in value or "\n" in value:
+        raise ValueError("invalid credential file")
+    return value
+
+
+def board_signal_write_and_post(task, signal, dry_run=False):
+    if not task or task in (".", "..") or Path(task).name != task:
+        raise ValueError("task must be one directory name")
+    if not isinstance(signal, dict) or set(signal) != set(FIELDS):
+        raise ValueError("input must contain exactly the 15 BOARD_SIGNAL fields")
+    if any(not isinstance(signal[k], str) for k in FIELDS if k != "seq"):
+        raise ValueError("all fields except seq must be strings")
+    if type(signal["seq"]) is not int or signal["seq"] < 1:
+        raise ValueError("seq must be a positive integer")
+    if any(not signal[k].strip() for k in FIELDS if k not in ("seq", "pr", "question")):
+        raise ValueError("required signal values must not be empty")
+    for key, choices in (("host", ("air", "mini", "云电脑")),
+                         ("status", ("wip", "blocked", "finished")),
+                         ("event", ("start", "milestone", "done", "blocked"))):
+        if signal[key] not in choices:
+            raise ValueError("invalid " + key)
+
+    relative = Path("任务流") / task / "BOARD_SIGNAL.md"
+    target = Path.home() / "ray-docs" / relative
+    content = "# BOARD_SIGNAL\n\n```yaml\n" + "".join(
+        key + ": " + json.dumps(signal[key], ensure_ascii=False) + "\n" for key in FIELDS
+    ) + "```\n"
+    temporary = None
+    try:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent,
+                                             prefix=".BOARD_SIGNAL.", delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(content)
+                stream.flush()
+                os.chmod(temporary, 0o644)
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+        finally:
+            if temporary is not None and temporary.exists():
+                temporary.unlink()
+    except OSError:
+        raise SignalWriteError from None
+
+    diff_id = hashlib.sha256((relative.as_posix() + "\n" + content).encode("utf-8")).hexdigest()
+    if dry_run:
+        print("dry-run: signal written; no POST; diff_id=" + diff_id)
+        return
+    try:
+        url = credential("webhook_url")
+        url.encode("ascii")
+        parts = urllib.parse.urlsplit(url)
+        if (not parts.hostname or parts.username or parts.password or parts.fragment or parts.port == 0
+                or any(c.isspace() for c in url)
+                or (parts.scheme != "https" and not (
+                    parts.scheme == "http" and parts.hostname in ("127.0.0.1", "::1", "localhost")))):
+            raise ValueError("webhook must use HTTPS (HTTP allowed only for loopback tests)")
+        auth = credential("webhook_auth")
+        if auth.lower().startswith("authorization:"):
+            auth = auth.split(":", 1)[1].strip()
+        if auth.lower().startswith("bearer "):
+            auth = auth[7:].strip()
+        if not auth or any(c.isspace() for c in auth):
+            raise ValueError("invalid authorization token")
+        auth.encode("ascii")
+    except (ValueError, OSError):
+        raise CredentialError from None
+    payload = {
+        "source": "board-signal-post", "host": signal["host"], "diff_id": diff_id,
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "changes": [{"path": relative.as_posix(), **{k: signal[k] for k in (
+            "seq", "board_row", "status", "event", "task_id", "title", "summary",
+            "question", "pr", "as_of")}}],
+    }
+    request = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                     headers={"Content-Type": "application/json",
+                                              "Authorization": "Bearer " + auth,
+                                              "Idempotency-Key": diff_id}, method="POST")
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=20) as response:
+        if not 200 <= response.status < 300:
+            raise urllib.error.HTTPError(url, response.status, "webhook returned non-2xx", None, None)
+    print("posted; diff_id=" + diff_id)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--task", required=True, help="directory name under ~/ray-docs/任务流")
+    parser.add_argument("--dry-run", action="store_true", help="write signal without reading credentials or posting")
+    args = parser.parse_args()
+    try:
+        signal = json.load(sys.stdin)
+        board_signal_write_and_post(args.task, signal, args.dry_run)
+    except CredentialError:
+        print("error: signal written; delivery pending; check local credentials/config", file=sys.stderr)
+        return 3
+    except SignalWriteError:
+        print("error: signal write failed; no POST", file=sys.stderr)
+        return 1
+    except urllib.error.HTTPError as error:
+        report_delivery_error(error)
+        error.close()
+        return 4
+    except ValueError:
+        print("error: invalid input; signal not written", file=sys.stderr)
+        return 2
+    except (OSError, urllib.error.URLError, http.client.HTTPException) as error:
+        report_delivery_error(error)
+        return 4
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

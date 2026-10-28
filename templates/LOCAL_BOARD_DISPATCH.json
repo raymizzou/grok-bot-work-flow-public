@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "task_id": "workflow24-example",
+      "batch_id": "C1",
+      "host": "air",
+      "active": true,
+      "name": "workflow24-example-main",
+      "workspace": "w1",
+      "tab": "w1:t1",
+      "pane": "w1:p1",
+      "session": "YOUR_VERIFIED_ORIGINAL_SESSION",
+      "kind": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "high",
+      "worktree": "/YOUR_HOME/projects/task-worktree",
+      "brief": "/YOUR_HOME/task-evidence/BRIEF.md",
+      "handoff": "/YOUR_HOME/task-evidence/handoff.json",
+      "ack": "/YOUR_HOME/task-evidence/ack.json",
+      "dispatch": {
+        "id": "delivery-24-C1-1",
+        "issued_at": "2026-10-27T09:00:00+08:00",
+        "observed_seq": 100,
+        "attempt": 1
+      },
+      "signal": {
+        "board": "YOUR_BOARD",
+        "board_row": "24 原样板标题",
+        "title": "24 原样板标题",
+        "goal": "当前批准目标",
+        "pr": "https://github.com/YOUR_GH_OWNER/YOUR_WORKFLOW_REPO/issues/24"
+      },
+      "activity_log": "/YOUR_HOME/.codex/sessions/YOUR_ORIGINAL_SESSION.jsonl",
+      "terminal": "YOUR_VERIFIED_ORIGINAL_TERMINAL_ID",
+      "service_tier": "default"
+    }
+  ],
+  "watches": [
+    {
+      "task_id": "workflow24-example",
+      "batch_id": "watch",
+      "signal_task": "workflow24-example-github",
+      "repo": "YOUR_GH_OWNER/YOUR_WORKFLOW_REPO",
+      "issue": 24,
+      "signal": {
+        "board": "YOUR_BOARD",
+        "board_row": "24 原样板标题",
+        "title": "24 原样板标题",
+        "goal": "GitHub 变化由 Bot 核实判断",
+        "pr": "https://github.com/YOUR_GH_OWNER/YOUR_WORKFLOW_REPO/issues/24"
+      }
+    }
+  ]
+}

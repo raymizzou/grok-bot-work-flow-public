@@ -1,0 +1,8 @@
+{
+  "task_id": "fe123-login",
+  "batch_id": "fe123-C1",
+  "status": "DONE",
+  "summary": "实现已交接：PR #45 已开，CI 绿，评审回应表 0 条未处理；等 Main 验收",
+  "question": "",
+  "evidence": "pr: https://github.com/YOUR_GH_OWNER/YOUR_BUSINESS_REPO/pull/45\nhead: 0d6fb543\nlog: <TASK_ROOT>/FEATURE-123-login-timeout/batch-C1/test.log"
+}

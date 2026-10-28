@@ -1,0 +1,17 @@
+{
+  "board": "示例 Bot",
+  "board_row": "#123 示例任务",
+  "task_id": "task123",
+  "title": "#123 示例任务",
+  "goal": "演示隔离 HOME 写入",
+  "status": "wip",
+  "question": "",
+  "host": "air",
+  "pr": "https://example.invalid/issues/123",
+  "event": "milestone",
+  "as_of": "2026-10-24T00:00:00+00:00",
+  "seq": 1,
+  "summary": "- 本机资料已整理\n- 等待负责人核对，Main 收到结果后继续",
+  "evidence": "DEMO ONLY: replace with real issue and evidence",
+  "writer": "示例执行者"
+}

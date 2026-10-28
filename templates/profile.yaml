@@ -1,0 +1,14 @@
+# 新 Bot 人工填写用；不是任何平台可直接导入的配置格式。
+bot_name: "YOUR_BOT"
+# 路径约定：`~/ray-docs` 仅为 helper 默认的参考布局；`YOUR_` 值须由部署者填写，涉及真实主机/出口/凭据的值只留本机私有配置。
+
+owner_bot: "YOUR_OWNER_BOT"
+responsibility: "YOUR_RESPONSIBILITY"
+board_page_url: "YOUR_PAGE_URL"
+host: "YOUR_HOST"
+timezone: "YOUR_IANA_TIMEZONE"
+silent_hours: "YOUR_REMINDER_POLICY"
+issue_repository: "YOUR_GH_OWNER/YOUR_WORKFLOW_REPO"
+sop_directory: "~/ray-docs/YOUR_COORDINATOR/sop"
+# host 只能填 air / mini / 云电脑；不是任意主机名。
+# webhook URL/auth 仅放本机凭据文件，本 profile 不含其值。
